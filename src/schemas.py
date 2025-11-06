@@ -3,6 +3,18 @@ from typing import List, Optional, Literal
 
 # Schemas for Request Body of /calculate
 
+class AddonSchema(BaseModel):
+    code: str
+    quantity: Optional[int] = Field(1, description="Количество для 'допов' с типом расчета 'COUNT'")
+
+class WindowSelectionSchema(BaseModel):
+    width_cm: int
+    height_cm: int
+    type: Literal['gluh', 'povorot', 'povorot_otkid']
+    quantity: int = Field(1, ge=1)
+    dual_chamber: bool = False
+    laminated: bool = False
+
 class HouseSchema(BaseModel):
     length_m: float = Field(..., gt=0)
     width_m: float = Field(..., gt=0)
@@ -46,6 +58,8 @@ class CalculateRequestSchema(BaseModel):
     partitions: PartitionsSchema
     insulation: InsulationSchema
     delivery: DeliverySchema
+    addons: Optional[List[AddonSchema]] = Field([], description="Список выбранных дополнительных опций")
+    windows: Optional[List[WindowSelectionSchema]] = Field([], description="Список выбранных окон и их конфигураций")
     commission_rub: float = Field(0, description="Комиссия агента (КП). Добавляется в финале, как в примере на стр. 31 прайса.")
 
 # Schemas for Response Body of /calculate (200 OK)
