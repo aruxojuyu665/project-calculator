@@ -89,11 +89,13 @@ class BasePriceM2(Base):
     thickness = relationship("InsulationThickness")
     storey_type = relationship("StoreyType")
 
-    __table_args__ = (
-        UniqueConstraint('tech_id', 'contour_id', func.coalesce(brand_id, 0), func.coalesce(thickness_id, 0),
-                         'storey_type_id', func.coalesce(floor_no, 0), func.coalesce(frame_thickness_mm, 0),
-                         name='uniq_base_price'),
-    )
+    # Примечание: сложное UniqueConstraint с coalesce не поддерживается напрямую в SQLAlchemy
+    # Уникальность должна обеспечиваться на уровне базы данных через миграции
+    # __table_args__ = (
+    #     UniqueConstraint('tech_id', 'contour_id', 'brand_id', 'thickness_id',
+    #                      'storey_type_id', 'floor_no', 'frame_thickness_mm',
+    #                      name='uniq_base_price'),
+    # )
 
 # 3) Dedicated price tables
 class CeilingHeightPrice(Base):
