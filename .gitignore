@@ -24,6 +24,9 @@ TestResults.xml
 # Environment variables
 .env
 
+# Google Sheets credentials
+gspread_credentials.json
+
 # Python
 __pycache__/
 *.pyc

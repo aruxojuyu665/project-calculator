@@ -1,162 +1,27 @@
 import os
 import json
 import gspread
-import pandas as pd
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from sqlalchemy.dialects.postgresql import JSONB
 from typing import Type, List, Dict, Any
+from sqlalchemy import Boolean, Integer, SmallInteger, Numeric, Enum, Text
 
-# Assuming models.py is in the same directory or accessible via PYTHONPATH
-# Since I don't have the actual models.py path, I'll assume it's available for import
-# For the purpose of this script, I will create a placeholder models.py
-# to ensure the imports work, but the user must ensure the real models are available.
-
-# --- Placeholder for models.py content (based on the provided file) ---
-# In a real scenario, this would be an import: from models import ...
-import enum
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    ForeignKey,
-    Numeric,
-    Boolean,
-    Enum,
-    SmallInteger,
-    Text,
-    UniqueConstraint,
-    func
-)
-from sqlalchemy.orm import declarative_base, relationship
-
-Base = declarative_base()
-
-class AddonCalcModeEnum(enum.Enum):
-    AREA = 'AREA'
-    RUN_M = 'RUN_M'
-    PERIMETER = 'PERIMETER'
-    COUNT = 'COUNT'
-    ROOF_L_SIDES = 'ROOF_L_SIDES'
-    M2_PER_HOUSE = 'M2_PER_HOUSE'
-
-class WindowTypeEnum(enum.Enum):
-    gluh = 'gluh'
-    povorot = 'povorot'
-    povorot_otkid = 'povorot_otkid'
-
-class BuildTechnology(Base):
-    __tablename__ = 'build_technologies'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    code = Column(Text, unique=True, nullable=False)
-    title = Column(Text, nullable=False)
-
-class StoreyType(Base):
-    __tablename__ = 'storey_types'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    code = Column(Text, unique=True, nullable=False)
-    title = Column(Text, nullable=False)
-
-class Contour(Base):
-    __tablename__ = 'contours'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    code = Column(Text, unique=True, nullable=False)
-    title = Column(Text, nullable=False)
-
-class InsulationBrand(Base):
-    __tablename__ = 'insulation_brands'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    code = Column(Text, unique=True, nullable=False)
-    title = Column(Text, nullable=False)
-
-class InsulationThickness(Base):
-    __tablename__ = 'insulation_thicknesses'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    mm = Column(Integer, unique=True, nullable=False)
-
-class BasePriceM2(Base):
-    __tablename__ = 'base_price_m2'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    tech_id = Column(Integer, ForeignKey('build_technologies.id'), nullable=False)
-    contour_id = Column(Integer, ForeignKey('contours.id'), nullable=False)
-    brand_id = Column(Integer, ForeignKey('insulation_brands.id'))
-    thickness_id = Column(Integer, ForeignKey('insulation_thicknesses.id'))
-    storey_type_id = Column(Integer, ForeignKey('storey_types.id'), nullable=False)
-    floor_no = Column(SmallInteger)
-    frame_thickness_mm = Column(SmallInteger)
-    price_rub = Column(Numeric(12, 2), nullable=False)
-
-class Addon(Base):
-    __tablename__ = 'addons'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    code = Column(Text, unique=True, nullable=False)
-    title = Column(Text, nullable=False)
-    calc_mode = Column(Enum(AddonCalcModeEnum), nullable=False)
-    price = Column(Numeric(12, 2), nullable=False)
-    params = Column(JSONB, default=lambda: {})
-    active = Column(Boolean, nullable=False, default=True)
-
-class WindowBasePrice(Base):
-    __tablename__ = 'window_base_prices'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    width_cm = Column(Integer, nullable=False)
-    height_cm = Column(Integer, nullable=False)
-    type = Column(Enum(WindowTypeEnum), nullable=False)
-    base_price_rub = Column(Numeric(12, 2), nullable=False)
-
-class WindowModifier(Base):
-    __tablename__ = 'window_modifiers'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    two_chambers = Column(Boolean, nullable=False)
-    laminated = Column(Boolean, nullable=False)
-    multiplier = Column(Numeric(6, 3), nullable=False)
-
-class Door(Base):
-    __tablename__ = 'doors'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    code = Column(Text, unique=True, nullable=False)
-    title = Column(Text, nullable=False)
-    price_rub = Column(Numeric(12, 2), nullable=False)
-
-class DeliveryRule(Base):
-    __tablename__ = 'delivery_rules'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    free_km = Column(Integer, nullable=False, default=100)
-    rate_per_km = Column(Numeric(10, 2), nullable=False, default=120.00)
-    note = Column(Text)
-
-class FoundationPrice(Base):
-    # Assuming a model for foundation_prices exists, based on the sheet name
-    # Since it was not in models.py, I'll create a simple one based on the sheet columns
-    __tablename__ = 'foundation_prices'
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    type = Column(Text, nullable=False)
-    diameter_mm = Column(Integer, nullable=False)
-    length_mm = Column(Integer, nullable=False)
-    head_mm = Column(Integer, nullable=False)
-    price_rub = Column(Numeric(12, 2), nullable=False)
-
-# --- End of Placeholder ---
+# Импортируем модели из src.models
+from src import models
+from src.models import Base
 
 
-# Mapping of Google Sheet names to SQLAlchemy Models and data transformation functions
-# The key is the sheet name, the value is a tuple: (Model, transform_function)
+# Mapping of Google Sheet names to SQLAlchemy Models
+# Ключ - имя листа в Google Sheets, значение - модель SQLAlchemy
 SYNC_MAP: Dict[str, Type[Base]] = {
-    "addons": Addon,
-    "window_base_prices": WindowBasePrice,
-    "window_modifiers": WindowModifier,
-    "doors": Door,
-    "delivery_rules": DeliveryRule,
-    # NOTE: FoundationPrice model was not in the provided models.py, 
-    # so I created a placeholder model above.
-    "foundation_prices": FoundationPrice, 
-    # NOTE: base_price_m2 requires foreign key lookups (tech_id, contour_id, etc.)
-    # which cannot be done without a full ORM setup and existing reference data.
-    # I will skip it for now, or assume the sheet uses IDs directly, which is unlikely.
-    # For a robust solution, the sync function would need to perform lookups.
-    # Since the request specifically mentioned BasePriceM2, I will include it, 
-    # but the data will need to be pre-processed to use IDs instead of codes/names.
-    "base_price_m2": BasePriceM2,
+    "addons": models.Addon,
+    "window_base_prices": models.WindowBasePrice,
+    "window_modifiers": models.WindowModifier,
+    "doors": models.Door,
+    "delivery_rules": models.DeliveryRule,
+    # base_price_m2 требует дополнительной обработки для преобразования кодов в ID
+    # "base_price_m2": models.BasePriceM2,  # Пока отключено, требует доработки
 }
 
 def get_gspread_client() -> gspread.Client:
@@ -245,8 +110,27 @@ def transform_data(model: Type[Base], data: List[Dict[str, Any]]) -> List[Dict[s
                 
                 # 3. Handle Enum
                 elif isinstance(col_type, Enum):
-                    # Assuming the sheet value is the raw enum value (e.g., 'AREA')
-                    new_row[col_name] = sheet_value
+                    # Значение из листа должно соответствовать значению enum (например, 'AREA')
+                    # Enum в SQLAlchemy может быть определен через python_type или через enum_class
+                    try:
+                        # Пробуем получить класс enum
+                        enum_class = getattr(col_type, 'enum_class', None) or col_type.python_type
+                        
+                        # Если значение уже является значением enum (например, 'AREA' для AddonCalcModeEnum.AREA)
+                        # Проверяем, существует ли такое значение в enum
+                        enum_values = [e.value for e in enum_class]
+                        if sheet_value in enum_values:
+                            new_row[col_name] = sheet_value
+                        else:
+                            # Пробуем найти по имени атрибута
+                            if hasattr(enum_class, sheet_value):
+                                new_row[col_name] = getattr(enum_class, sheet_value).value
+                            else:
+                                new_row[col_name] = sheet_value
+                    except Exception as enum_err:
+                        # Если не удалось обработать enum, используем исходное значение
+                        print(f"Warning: Enum conversion failed for {col_name}: {enum_err}")
+                        new_row[col_name] = sheet_value
                 
                 # 4. Handle JSONB (e.g., for 'params' column in Addon)
                 elif isinstance(col_type, JSONB):
