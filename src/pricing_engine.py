@@ -141,7 +141,8 @@ class PricingEngine:
             # TODO: Add proper error handling for missing prices
             return 0.0
         
-        return float(price_per_sqm) * A_house
+        base_price = float(price_per_sqm) * A_house
+        return base_price
 
     def _calculate_roof_costs(self, db: Session, req: CalculateRequestSchema, A_house: float) -> tuple[float, list[DopolneniyaItem]]:
         """

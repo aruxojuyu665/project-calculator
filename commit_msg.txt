@@ -1,0 +1,14 @@
+feat: интеграция с Google Sheets для синхронизации цен
+
+- Обновлен src/sync_service.py: убраны плейсхолдеры, добавлены правильные импорты из src.models
+- Добавлен эндпоинт POST /admin/sync-prices в src/main.py для синхронизации данных из Google Sheets
+- Создана документация docs/GOOGLE_SHEETS_INTEGRATION.md с подробным описанием интеграции
+- Добавлен gspread_credentials.json в .gitignore для защиты секретов
+- Улучшена обработка Enum типов в transform_data()
+
+Синхронизация данных:
+- Листы Google Sheets: addons, window_base_prices, window_modifiers, doors, delivery_rules
+- Автоматическое преобразование типов данных (Boolean, Enum, Numeric, JSONB)
+- Очистка и перезапись данных в соответствующих таблицах БД
+
+

@@ -139,3 +139,4 @@ def test_calculate_6x6_example_pdf(mock_db: Session):
         assert result.Итоговая_стоимость.Окончательная_цена_руб == expected_total_price, \
             f"Цена не совпадает: получено {result.Итоговая_стоимость.Окончательная_цена_руб}, ожидалось {expected_total_price}"
 
+
