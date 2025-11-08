@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  test_db:
+    image: postgres:15-alpine
+    container_name: pricing_calculator_test_db
+    environment:
+      - POSTGRES_USER=test_user
+      - POSTGRES_PASSWORD=test_password
+      - POSTGRES_DB=test_db
+    ports:
+      - "5433:5432" # Используем другой порт, чтобы не конфликтовать с основной БД
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_test_data: 

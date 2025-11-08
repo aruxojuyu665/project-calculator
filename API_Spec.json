@@ -1,0 +1,233 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "imm0rtal | Калькулятор стоимости каркасного дома",
+    "version": "1.2.0",
+    "description": "POST /calculate принимает параметры из списка в конце файла «Габариты_.docx» и возвращает расчёт по структуре секций того же документа. Добавлено поле commission_rub (комиссия агента) по аудиту. **Добавлены поля addons и windows для выбора дополнительных опций и окон.**"
+  },
+  "paths": {
+    "/calculate": {
+      "post": {
+        "summary": "Рассчитать стоимость",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["house","ceiling","roof","partitions","insulation","delivery"],
+                "properties": {
+                  "house": {
+                    "type": "object",
+                    "required": ["length_m","width_m"],
+                    "properties": {
+                      "length_m": {"type": "number", "minimum": 1},
+                      "width_m":  {"type": "number", "minimum": 1}
+                    }
+                  },
+                  "terrace": {
+                    "type": "object",
+                    "properties": {
+                      "primary": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {"type": "boolean", "default": false},
+                          "length_m": {"type": "number"},
+                          "width_m": {"type": "number"}
+                        }
+                      },
+                      "extra": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {"type": "boolean", "default": false},
+                          "length_m": {"type": "number"},
+                          "width_m": {"type": "number"}
+                        }
+                      }
+                    }
+                  },
+                  "porch": {
+                    "type": "object",
+                    "properties": {
+                      "primary": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {"type": "boolean", "default": false},
+                          "length_m": {"type": "number"},
+                          "width_m": {"type": "number"}
+                        }
+                      },
+                      "extra": {
+                        "type": "object",
+                        "properties": {
+                          "enabled": {"type": "boolean", "default": false},
+                          "length_m": {"type": "number"},
+                          "width_m": {"type": "number"}
+                        }
+                      }
+                    }
+                  },
+                  "ceiling": {
+                    "type": "object",
+                    "required": ["type","height_m"],
+                    "properties": {
+                      "type": {"type": "string", "enum": ["flat","rafters"]},
+                      "height_m": {"type": "number", "enum": [2.4,2.5,2.6,2.7,2.8,3.0]},
+                      "ridge_delta_cm": {"type": "integer", "enum": [0,10,20,30,40,50,60]}
+                    }
+                  },
+                  "roof": {
+                    "type": "object",
+                    "properties": {
+                      "overhang_cm": {"type": "string", "enum": ["std","30","40","50"], "default": "std"}
+                    }
+                  },
+                  "partitions": {
+                    "type": "object",
+                    "required": ["enabled"],
+                    "properties": {
+                      "enabled": {"type": "boolean"},
+                      "type": {"type": "string", "enum": ["none","plain","insul50","insul100"]},
+                      "run_m": {"type": "number", "minimum": 0}
+                    }
+                  },
+                  "insulation": {
+                    "type": "object",
+                    "properties": {
+                      "brand": {"type": "string", "enum": ["izobel","neman_plus","technonicol"], "default": "izobel"},
+                      "mm": {"type": "integer", "enum": [100,150,200]},
+                      "build_tech": {"type": "string", "enum": ["panel","frame"], "default": "panel"}
+                    }
+                  },
+                  "delivery": {
+                    "type": "object",
+                    "properties": {
+                      "distance_km": {"type": "number", "default": 100}
+                    }
+                  },
+                  "addons": {
+                    "type": "array",
+                    "description": "Список выбранных дополнительных опций",
+                    "items": {
+                      "type": "object",
+                      "required": ["code"],
+                      "properties": {
+                        "code": {"type": "string"},
+                        "quantity": {"type": "integer", "default": 1, "description": "Количество для 'допов' с типом расчета 'COUNT'"}
+                      }
+                    }
+                  },
+                  "windows": {
+                    "type": "array",
+                    "description": "Список выбранных окон и их конфигураций",
+                    "items": {
+                      "type": "object",
+                      "required": ["width_cm", "height_cm", "type", "quantity"],
+                      "properties": {
+                        "width_cm": {"type": "integer"},
+                        "height_cm": {"type": "integer"},
+                        "type": {"type": "string", "enum": ["gluh", "povorot", "povorot_otkid"]},
+                        "quantity": {"type": "integer", "default": 1, "minimum": 1},
+                        "dual_chamber": {"type": "boolean", "default": false},
+                        "laminated": {"type": "boolean", "default": false}
+                      }
+                    }
+                  },
+                  "commission_rub": {
+                    "type": "number",
+                    "default": 0,
+                    "description": "Комиссия агента (КП). Добавляется в финале, как в примере на стр. 31 прайса."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Успешный расчёт",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "Габариты": {
+                      "type": "object",
+                      "properties": {
+                        "Площадь_теплого_контура_м2": {"type": "number"},
+                        "Площадь_террас_м2": {"type": "number"},
+                        "Площадь_крылец_м2": {"type": "number"},
+                        "Высота_потолка_м": {"type": "number"},
+                        "Тип_потолка": {"type": "string"},
+                        "Повышение_конька_см": {"type": "integer"},
+                        "Вынос_крыши": {"type": "string"}
+                      }
+                    },
+                    "Окна_и_двери": {
+                      "type": "object",
+                      "properties": {
+                        "Стандартные_окна": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "Размер": {"type": "string"},
+                              "Тип": {"type": "string"},
+                              "Колво": {"type": "integer"},
+                              "Цена_шт_руб": {"type": "number"},
+                              "Сумма_руб": {"type": "number"}
+                            }
+                          }
+                        },
+                        "Двери": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "Наименование": {"type": "string"},
+                              "Колво": {"type": "integer"},
+                              "Цена_шт_руб": {"type": "number"},
+                              "Сумма_руб": {"type": "number"}
+                            }
+                          }
+                        },
+                        "Итого_по_разделу_руб": {"type": "number"}
+                      }
+                    },
+                    "Конструктив": {
+                      "type": "object",
+                      "properties": {
+                        "База_руб": {"type": "number"},
+                        "Дополнения": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "Код": {"type": "string"},
+                              "Наименование": {"type": "string"},
+                              "Расчёт": {"type": "string"},
+                              "Сумма_руб": {"type": "number"}
+                            }
+                          }
+                        },
+                        "Доставка_руб": {"type": "number"}
+                      }
+                    },
+                    "Итоговая_стоимость": {
+                      "type": "object",
+                      "properties": {
+                        "Итого_без_комиссии_руб": {"type": "number"},
+                        "Комиссия_руб": {"type": "number"},
+                        "Окончательная_цена_руб": {"type": "number"}
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

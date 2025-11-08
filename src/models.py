@@ -17,7 +17,7 @@ from sqlalchemy import (
     func
 )
 from sqlalchemy.orm import declarative_base, relationship
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.types import JSON
 
 Base = declarative_base()
 
@@ -124,7 +124,7 @@ class Addon(Base):
     title = Column(Text, nullable=False)
     calc_mode = Column(Enum(AddonCalcModeEnum), nullable=False)
     price = Column(Numeric(12, 2), nullable=False)
-    params = Column(JSONB, default=lambda: {})
+    params = Column(JSON, nullable=False, server_default='{}')
     active = Column(Boolean, nullable=False, default=True)
 
 # 5) Partitions
@@ -186,7 +186,7 @@ class StdInclusion(Base):
     included_window_width_cm = Column(Integer, nullable=False, default=100)
     included_window_height_cm = Column(Integer, nullable=False, default=100)
     included_window_type = Column(Enum(WindowTypeEnum), nullable=False, default='povorot_otkid')
-    area_to_qty = Column(JSONB, nullable=False)
+    area_to_qty = Column(JSON, nullable=False)
     included_entry_door_code = Column(Text)
     included_interior_doors_qty = Column(Integer)
     note = Column(Text)
@@ -222,4 +222,4 @@ class PriceAudit(Base):
     entity_id = Column(BigInteger, nullable=False)
     action = Column(Text, nullable=False)
     changed_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    payload = Column(JSONB, nullable=False)
+    payload = Column(JSON, nullable=False)

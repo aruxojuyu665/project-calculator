@@ -230,3 +230,4 @@ curl -X POST http://localhost:8000/admin/sync-prices
 - Ограничьте доступ к эндпоинту `/admin/sync-prices` (добавьте аутентификацию)
 
 
+

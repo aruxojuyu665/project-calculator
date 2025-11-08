@@ -38,7 +38,7 @@ def test_calculate_6x6_example_pdf(mock_db: Session):
         porch=None,
         ceiling=CeilingSchema(type='flat', height_m=2.4, ridge_delta_cm=0),
         roof=RoofSchema(overhang_cm='std'),
-        partitions=PartitionsSchema(enabled=True, type='plain', run_m=0.0),
+        partitions=PartitionsSchema(enabled=False, type='none', run_m=0.0), # В примере нет перегородок
         insulation=InsulationSchema(brand='izobel', mm=100, build_tech='panel'),
         delivery=DeliverySchema(distance_km=140.0),
         windows=[
@@ -51,7 +51,19 @@ def test_calculate_6x6_example_pdf(mock_db: Session):
                 laminated=False
             )
         ],
-        addons=[],  # Допы будут мокироваться через БД
+        addons=[
+            # Имитация бруса С класс (снаружи и внутри)
+            AddonSchema(code='IMITATION_BRUS_C_EXT'),
+            AddonSchema(code='IMITATION_BRUS_C_INT'),
+            # Пол ОСБ
+            AddonSchema(code='OSB_FLOOR'),
+            # Кровля металлочерепица
+            AddonSchema(code='METAL_TILE_ROOF'),
+            # Водосточная система (по периметру)
+            AddonSchema(code='GUTTER_SYSTEM'),
+            # Обшивка цоколя рейкой (весь периметр)
+            AddonSchema(code='BASEMENT_CLADDING_RAIL'),
+        ],
         commission_rub=30000.0
     )
 
@@ -68,7 +80,7 @@ def test_calculate_6x6_example_pdf(mock_db: Session):
     
     mock_db.query.return_value = mock_query
     
-    # Мокируем другие запросы (для допов, окон и т.д.)
+        # Мокируем другие запросы (для допов, окон и т.д.)
     with patch.object(mock_db, 'query') as mock_query_func:
         # Базовая цена
         mock_base_query = MagicMock()
@@ -83,7 +95,8 @@ def test_calculate_6x6_example_pdf(mock_db: Session):
         # Окна
         mock_window_query = MagicMock()
         mock_window_base = MagicMock()
-        mock_window_base.base_price_rub = 10000.0  # Примерная базовая цена окна
+        # Базовая цена окна 150x150 (из расчета: 14400)
+        mock_window_base.base_price_rub = 14400.0
         mock_window_query.filter_by.return_value.first.return_value = mock_window_base
         
         # Модификатор окна (однокамерное, без ламинации)

@@ -20,6 +20,11 @@ SYNC_MAP: Dict[str, Type[Base]] = {
     "window_modifiers": models.WindowModifier,
     "doors": models.Door,
     "delivery_rules": models.DeliveryRule,
+    "ceiling_height_prices": models.CeilingHeightPrice,
+    "ridge_height_prices": models.RidgeHeightPrice,
+    "roof_overhang_prices": models.RoofOverhangPrice,
+    "partition_prices": models.PartitionPrice,
+    "std_inclusions": models.StdInclusion,
     # base_price_m2 требует дополнительной обработки для преобразования кодов в ID
     # "base_price_m2": models.BasePriceM2,  # Пока отключено, требует доработки
 }
