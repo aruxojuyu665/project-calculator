@@ -7,6 +7,10 @@ class AddonSchema(BaseModel):
     code: str
     quantity: Optional[int] = Field(1, description="Количество для 'допов' с типом расчета 'COUNT'")
 
+class DoorSelectionSchema(BaseModel):
+    code: str
+    quantity: int = Field(1, ge=1)
+
 class WindowSelectionSchema(BaseModel):
     width_cm: int
     height_cm: int
@@ -60,6 +64,7 @@ class CalculateRequestSchema(BaseModel):
     delivery: DeliverySchema
     addons: Optional[List[AddonSchema]] = Field([], description="Список выбранных дополнительных опций")
     windows: Optional[List[WindowSelectionSchema]] = Field([], description="Список выбранных окон и их конфигураций")
+    doors: Optional[List[DoorSelectionSchema]] = Field([], description="Список выбранных дверей и их конфигураций")
     commission_rub: float = Field(0, description="Комиссия агента (КП). Добавляется в финале, как в примере на стр. 31 прайса.")
 
 # Schemas for Response Body of /calculate (200 OK)

@@ -22,7 +22,7 @@
                     "required": ["length_m","width_m"],
                     "properties": {
                       "length_m": {"type": "number", "minimum": 1},
-                      "width_m":  {"type": "number", "minimum": 1}
+                      "width_m": {"type": "number", "minimum": 1}
                     }
                   },
                   "terrace": {

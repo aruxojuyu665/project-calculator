@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from src.schemas import CalculateRequestSchema, CalculateResponseSchema
@@ -13,6 +14,15 @@ models.Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="imm0rtal | Калькулятор стоимости каркасного дома",
     version="1.1.0"
+)
+
+# Добавляем CORS middleware для работы с фронтендом
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080", "http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 @app.post("/calculate", response_model=CalculateResponseSchema, summary="Рассчитать стоимость")

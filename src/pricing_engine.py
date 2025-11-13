@@ -8,7 +8,9 @@ from src.schemas import (
     KonstruktivSchema,
     ItogovayaStoimostSchema,
     DopolneniyaItem,
-    StandardWindowItem
+    StandardWindowItem,
+    DoorItem,
+    DoorSelectionSchema
 )
 from src import models
 
@@ -62,9 +64,11 @@ class PricingEngine:
             replacement_delta = self._handle_replacements(db, req, A_house)
             windows_cost_after_replacement = windows_cost - replacement_delta
         else:
-            # Если окна не выбраны, стандартные остаются (уже включены в базовую цену)
-            windows_cost_after_replacement = 0.0
-        doors_cost, doors_details = 0.0, []  # TODO: Реализовать расчет дверей
+            # Если окна не выбраны, показываем стандартные окна
+            std_windows_details, std_windows_cost = self._get_standard_windows_details(db, req, A_house)
+            windows_details = std_windows_details
+            windows_cost_after_replacement = std_windows_cost
+        doors_cost, doors_details = self._calculate_doors_price(db, req)
         windows_doors_cost = windows_cost_after_replacement + doors_cost
 
         # --- 4. Доставка ---
@@ -119,6 +123,23 @@ class PricingEngine:
         else: # 'rafters'
             storey_type_code = 'mansard'
         
+        # Проверяем, есть ли вообще данные в таблице
+        total_records = db.query(models.BasePriceM2).count()
+        print(f"DEBUG: Всего записей в base_price_m2: {total_records}")
+        
+        # Проверяем справочники
+        tech_count = db.query(models.BuildTechnology).filter_by(code=req.insulation.build_tech).count()
+        brand_count = db.query(models.InsulationBrand).filter_by(code=req.insulation.brand).count()
+        thickness_count = db.query(models.InsulationThickness).filter_by(mm=req.insulation.mm).count()
+        storey_count = db.query(models.StoreyType).filter_by(code=storey_type_code).count()
+        contour_count = db.query(models.Contour).filter_by(code='warm').count()
+        
+        print(f"DEBUG: Поиск цены для tech={req.insulation.build_tech} (найдено: {tech_count}), "
+              f"brand={req.insulation.brand} (найдено: {brand_count}), "
+              f"mm={req.insulation.mm} (найдено: {thickness_count}), "
+              f"storey={storey_type_code} (найдено: {storey_count}), "
+              f"contour=warm (найдено: {contour_count})")
+        
         price_per_sqm = db.query(models.BasePriceM2.price_rub).join(
             models.BuildTechnology, models.BasePriceM2.tech_id == models.BuildTechnology.id
         ).join(
@@ -138,9 +159,10 @@ class PricingEngine:
         ).scalar()
 
         if price_per_sqm is None:
-            # TODO: Add proper error handling for missing prices
+            print(f"WARNING: Базовая цена не найдена в БД для указанных параметров. Возвращаю 0.0")
             return 0.0
         
+        print(f"DEBUG: Найдена базовая цена {price_per_sqm} руб/м², площадь {A_house} м²")
         base_price = float(price_per_sqm) * A_house
         return base_price
 
@@ -160,7 +182,8 @@ class PricingEngine:
 
         # 2. Стоимость за повышение конька (только для 'flat')
         if req.ceiling.type == 'flat' and req.ceiling.ridge_delta_cm is not None and req.ceiling.ridge_delta_cm > 0:
-            ridge_height_m = 1.5 + (req.ceiling.ridge_delta_cm / 10) # Примерная логика, нужна точная
+            # Конвертируем см в метры для поиска в БД
+            ridge_height_m = req.ceiling.ridge_delta_cm / 100.0
             price_model = db.query(models.RidgeHeightPrice).filter_by(ridge_height_m=ridge_height_m).first()
             if price_model and price_model.price_per_m2 > 0:
                 cost = float(price_model.price_per_m2) * A_house
@@ -421,3 +444,153 @@ class PricingEngine:
         std_windows_total_cost = std_window_price_per_unit * std_windows_qty
         
         return std_windows_total_cost
+
+    def _get_standard_windows_details(self, db: Session, req: CalculateRequestSchema, A_house: float) -> tuple[list[StandardWindowItem], float]:
+        """
+        Получает детали стандартных окон, включенных в базовую цену.
+        """
+        windows_details = []
+        total_cost = 0.0
+        
+        # Определяем параметры для поиска стандартного включения
+        if req.ceiling.type == 'flat':
+            storey_type_code = 'one'
+        else:  # 'rafters'
+            storey_type_code = 'mansard'
+        
+        # Находим стандартное включение
+        std_inclusion = db.query(models.StdInclusion).join(
+            models.BuildTechnology, models.StdInclusion.tech_id == models.BuildTechnology.id
+        ).join(
+            models.Contour, models.StdInclusion.contour_id == models.Contour.id
+        ).join(
+            models.StoreyType, models.StdInclusion.storey_type_id == models.StoreyType.id
+        ).filter(
+            models.BuildTechnology.code == req.insulation.build_tech,
+            models.Contour.code == 'warm',
+            models.StoreyType.code == storey_type_code
+        ).first()
+        
+        if not std_inclusion:
+            print(f"DEBUG: Стандартное включение не найдено для tech={req.insulation.build_tech}, contour=warm, storey={storey_type_code}")
+            return windows_details, total_cost
+        
+        # Определяем количество стандартных окон
+        area_to_qty = std_inclusion.area_to_qty
+        if not area_to_qty or not isinstance(area_to_qty, list):
+            print(f"DEBUG: area_to_qty невалиден: {area_to_qty}")
+            return windows_details, total_cost
+        
+        std_windows_qty = 0
+        for rule in sorted(area_to_qty, key=lambda x: x.get('max_m2', 0)):
+            if A_house <= rule.get('max_m2', 0):
+                std_windows_qty = rule.get('qty', 0)
+                break
+        
+        if std_windows_qty == 0:
+            print(f"DEBUG: Количество стандартных окон = 0 для площади {A_house}")
+            return windows_details, total_cost
+        
+        # Находим базовую цену стандартного окна
+        # Проверяем тип окна - может быть Enum или строка
+        window_type_value = std_inclusion.included_window_type
+        if hasattr(window_type_value, 'value'):
+            window_type_value = window_type_value.value
+        elif isinstance(window_type_value, str):
+            pass  # Уже строка
+        else:
+            window_type_value = str(window_type_value)
+        
+        print(f"DEBUG: Поиск стандартного окна: {std_inclusion.included_window_width_cm}×{std_inclusion.included_window_height_cm}, тип={window_type_value}")
+        
+        # Пробуем найти окно, используя Enum если нужно
+        std_window_base = db.query(models.WindowBasePrice).filter(
+            models.WindowBasePrice.width_cm == std_inclusion.included_window_width_cm,
+            models.WindowBasePrice.height_cm == std_inclusion.included_window_height_cm,
+            models.WindowBasePrice.type == window_type_value
+        ).first()
+        
+        if not std_window_base:
+            # Пробуем найти через сравнение строк или любое окно такого размера
+            std_window_base = db.query(models.WindowBasePrice).filter(
+                models.WindowBasePrice.width_cm == std_inclusion.included_window_width_cm,
+                models.WindowBasePrice.height_cm == std_inclusion.included_window_height_cm
+            ).first()
+            if std_window_base:
+                print(f"DEBUG: Найдено окно размера {std_inclusion.included_window_width_cm}×{std_inclusion.included_window_height_cm}, но с другим типом. Используем его.")
+        
+        if not std_window_base:
+            print(f"DEBUG: Стандартное окно {std_inclusion.included_window_width_cm}×{std_inclusion.included_window_height_cm} типа {window_type_value} не найдено в базе цен")
+            return windows_details, total_cost
+        
+        # Находим модификатор для однокамерного без ламинации
+        std_modifier = db.query(models.WindowModifier).filter_by(
+            two_chambers=False,
+            laminated=False
+        ).first()
+        
+        if std_modifier:
+            std_multiplier = float(std_modifier.multiplier)
+        else:
+            std_multiplier = 1.0
+        
+        # Рассчитываем стоимость
+        base_price = float(std_window_base.base_price_rub)
+        price_per_unit = base_price * std_multiplier
+        total_cost = price_per_unit * std_windows_qty
+        
+        # Формируем описание
+        size_str = f"{std_inclusion.included_window_width_cm}×{std_inclusion.included_window_height_cm}"
+        type_str_map = {
+            'gluh': 'глухое',
+            'povorot': 'поворотное',
+            'povorot_otkid': 'поворотно-откидное'
+        }
+        type_str = type_str_map.get(window_type_value, window_type_value)
+        
+        windows_details.append(StandardWindowItem(
+            Размер=size_str,
+            Тип=type_str,
+            Колво=std_windows_qty,
+            Цена_шт_руб=round(price_per_unit, 2),
+            Сумма_руб=round(total_cost, 2)
+        ))
+        
+        print(f"DEBUG: Стандартные окна: {std_windows_qty} шт, цена за шт: {price_per_unit}, итого: {total_cost}")
+        return windows_details, total_cost
+
+    def _calculate_doors_price(self, db: Session, req: CalculateRequestSchema) -> tuple[float, list[DoorItem]]:
+        """
+        Расчет стоимости дверей (стр. 25 прайса).
+        """
+        total_cost = 0.0
+        doors_details = []
+
+        if not req.doors:
+            print("DEBUG: Двери не выбраны (req.doors пустой)")
+            return total_cost, doors_details
+
+        print(f"DEBUG: Обработка {len(req.doors)} дверей")
+        for door_req in req.doors:
+            # 1. Найти цену двери по коду
+            door_model = db.query(models.Door).filter_by(code=door_req.code).first()
+
+            if not door_model:
+                print(f"DEBUG: Дверь с кодом '{door_req.code}' не найдена в БД")
+                continue
+
+            price_per_unit = float(door_model.price_rub)
+            total_price = price_per_unit * door_req.quantity
+            total_cost += total_price
+
+            # 2. Формируем детали для ответа
+            doors_details.append(DoorItem(
+                Наименование=door_model.title,
+                Колво=door_req.quantity,
+                Цена_шт_руб=round(price_per_unit, 2),
+                Сумма_руб=round(total_price, 2)
+            ))
+            print(f"DEBUG: Дверь '{door_model.title}': {door_req.quantity}шт × {price_per_unit}₽ = {total_price}₽")
+
+        print(f"DEBUG: Итого по дверям: {total_cost}₽")
+        return total_cost, doors_details

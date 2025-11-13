@@ -14,4 +14,4 @@ services:
       - postgres_test_data:/var/lib/postgresql/data
 
 volumes:
-  postgres_test_data: 
+  postgres_test_data:
