@@ -8,7 +8,8 @@ from src.schemas import (
     KonstruktivSchema,
     ItogovayaStoimostSchema,
     DopolneniyaItem,
-    StandardWindowItem
+    StandardWindowItem,
+    DoorItem
 )
 from src import models
 
@@ -64,7 +65,7 @@ class PricingEngine:
         else:
             # Если окна не выбраны, стандартные остаются (уже включены в базовую цену)
             windows_cost_after_replacement = 0.0
-        doors_cost, doors_details = 0.0, []  # TODO: Реализовать расчет дверей
+        doors_cost, doors_details = self._calculate_doors_cost(db, req)
         windows_doors_cost = windows_cost_after_replacement + doors_cost
 
         # --- 4. Доставка ---
@@ -419,5 +420,89 @@ class PricingEngine:
         # 5. Рассчитываем стоимость стандартных окон
         std_window_price_per_unit = float(std_window_base.base_price_rub) * std_multiplier
         std_windows_total_cost = std_window_price_per_unit * std_windows_qty
-        
+
         return std_windows_total_cost
+
+    def _calculate_doors_cost(self, db: Session, req: CalculateRequestSchema):
+        """
+        Рассчитывает стоимость дверей на основе стандартных включений.
+
+        В стандартное включение могут входить:
+        - Входная дверь (included_entry_door_code) - 1 шт
+        - Межкомнатные двери (included_interior_doors_qty) - N шт
+
+        Возвращает (doors_cost, doors_details)
+        """
+        # 1. Определяем параметры для поиска стандартного включения
+        if req.ceiling.type == 'flat':
+            storey_type_code = 'one'
+        else:  # 'rafters'
+            storey_type_code = 'mansard'
+
+        # Находим стандартное включение для текущей конфигурации
+        std_inclusion = db.query(models.StdInclusion).join(
+            models.BuildTechnology, models.StdInclusion.tech_id == models.BuildTechnology.id
+        ).join(
+            models.Contour, models.StdInclusion.contour_id == models.Contour.id
+        ).join(
+            models.StoreyType, models.StdInclusion.storey_type_id == models.StoreyType.id
+        ).filter(
+            models.BuildTechnology.code == req.insulation.build_tech,
+            models.Contour.code == 'warm',
+            models.StoreyType.code == storey_type_code
+        ).first()
+
+        if not std_inclusion:
+            # Если стандартное включение не найдено, возвращаем пустой список
+            return 0.0, []
+
+        doors_details = []
+        total_doors_cost = 0.0
+
+        # 2. Обрабатываем входную дверь
+        if std_inclusion.included_entry_door_code:
+            entry_door = db.query(models.Door).filter_by(
+                code=std_inclusion.included_entry_door_code
+            ).first()
+
+            if entry_door:
+                entry_door_price = float(entry_door.price_rub)
+                entry_door_qty = 1
+                entry_door_total = entry_door_price * entry_door_qty
+                total_doors_cost += entry_door_total
+
+                doors_details.append(DoorItem(
+                    Наименование=entry_door.title,
+                    Колво=entry_door_qty,
+                    Цена_шт_руб=entry_door_price,
+                    Сумма_руб=entry_door_total
+                ))
+
+        # 3. Обрабатываем межкомнатные двери
+        if std_inclusion.included_interior_doors_qty and std_inclusion.included_interior_doors_qty > 0:
+            # Ищем межкомнатную дверь по коду (обычно используется общий код для всех межкомнатных)
+            # Если код не указан в std_inclusion, пробуем найти дверь с кодом содержащим "interior" или "межкомнатная"
+            interior_door = db.query(models.Door).filter(
+                models.Door.code.ilike('%interior%')
+            ).first()
+
+            # Если не нашли, пробуем по title
+            if not interior_door:
+                interior_door = db.query(models.Door).filter(
+                    models.Door.title.ilike('%межкомнатн%')
+                ).first()
+
+            if interior_door:
+                interior_door_price = float(interior_door.price_rub)
+                interior_door_qty = std_inclusion.included_interior_doors_qty
+                interior_door_total = interior_door_price * interior_door_qty
+                total_doors_cost += interior_door_total
+
+                doors_details.append(DoorItem(
+                    Наименование=interior_door.title,
+                    Колво=interior_door_qty,
+                    Цена_шт_руб=interior_door_price,
+                    Сумма_руб=interior_door_total
+                ))
+
+        return total_doors_cost, doors_details
