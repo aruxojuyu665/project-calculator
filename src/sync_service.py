@@ -163,48 +163,80 @@ def resolve_foreign_keys(db: Session, data: List[Dict[str, Any]]) -> List[Dict[s
     """
     Resolves foreign key codes to IDs for std_inclusions table.
 
-    Expected columns in Google Sheets:
+    Expected columns in Google Sheets (option 1 - codes):
     - tech_code -> tech_id
     - contour_code -> contour_id
     - storey_type_code -> storey_type_id
+
+    Or (option 2 - direct IDs):
+    - tech_id
+    - contour_id
+    - storey_type_id
+
+    If codes are missing, tries to use first available ID from reference tables.
     """
     # Build lookup dictionaries
     tech_lookup = {t.code: t.id for t in db.query(models.BuildTechnology).all()}
     contour_lookup = {c.code: c.id for c in db.query(models.Contour).all()}
     storey_lookup = {s.code: s.id for s in db.query(models.StoreyType).all()}
 
+    # Get default IDs (first record from each table)
+    default_tech_id = db.query(models.BuildTechnology.id).first()
+    default_contour_id = db.query(models.Contour.id).first()
+    default_storey_id = db.query(models.StoreyType.id).first()
+
+    if not default_tech_id or not default_contour_id or not default_storey_id:
+        print("ERROR: Reference tables (build_technologies, contours, storey_types) are empty!")
+        print("Please populate these tables before syncing std_inclusions.")
+        return []
+
+    default_tech_id = default_tech_id[0]
+    default_contour_id = default_contour_id[0]
+    default_storey_id = default_storey_id[0]
+
     resolved_data = []
     for row in data:
         new_row = row.copy()
+        skip_row = False
 
-        # Resolve tech_code -> tech_id
+        # Resolve tech_code -> tech_id or use existing tech_id or use default
         if 'tech_code' in new_row:
             tech_code = new_row.pop('tech_code')
-            if tech_code in tech_lookup:
+            if tech_code and tech_code in tech_lookup:
                 new_row['tech_id'] = tech_lookup[tech_code]
-            else:
-                print(f"Warning: Unknown tech_code '{tech_code}', skipping row")
-                continue
+            elif tech_code:
+                print(f"Warning: Unknown tech_code '{tech_code}', using default tech_id={default_tech_id}")
+                new_row['tech_id'] = default_tech_id
+        elif 'tech_id' not in new_row or not new_row.get('tech_id'):
+            print(f"Warning: No tech_code or tech_id provided, using default tech_id={default_tech_id}")
+            new_row['tech_id'] = default_tech_id
 
-        # Resolve contour_code -> contour_id
+        # Resolve contour_code -> contour_id or use existing contour_id or use default
         if 'contour_code' in new_row:
             contour_code = new_row.pop('contour_code')
-            if contour_code in contour_lookup:
+            if contour_code and contour_code in contour_lookup:
                 new_row['contour_id'] = contour_lookup[contour_code]
-            else:
-                print(f"Warning: Unknown contour_code '{contour_code}', skipping row")
-                continue
+            elif contour_code:
+                print(f"Warning: Unknown contour_code '{contour_code}', using default contour_id={default_contour_id}")
+                new_row['contour_id'] = default_contour_id
+        elif 'contour_id' not in new_row or not new_row.get('contour_id'):
+            print(f"Warning: No contour_code or contour_id provided, using default contour_id={default_contour_id}")
+            new_row['contour_id'] = default_contour_id
 
-        # Resolve storey_type_code -> storey_type_id
+        # Resolve storey_type_code -> storey_type_id or use existing storey_type_id or use default
         if 'storey_type_code' in new_row:
             storey_code = new_row.pop('storey_type_code')
-            if storey_code in storey_lookup:
+            if storey_code and storey_code in storey_lookup:
                 new_row['storey_type_id'] = storey_lookup[storey_code]
-            else:
-                print(f"Warning: Unknown storey_type_code '{storey_code}', skipping row")
-                continue
+            elif storey_code:
+                print(f"Warning: Unknown storey_type_code '{storey_code}', using default storey_type_id={default_storey_id}")
+                new_row['storey_type_id'] = default_storey_id
+        elif 'storey_type_id' not in new_row or not new_row.get('storey_type_id'):
+            print(f"Warning: No storey_type_code or storey_type_id provided, using default storey_type_id={default_storey_id}")
+            new_row['storey_type_id'] = default_storey_id
 
-        resolved_data.append(new_row)
+        if not skip_row:
+            resolved_data.append(new_row)
 
     return resolved_data
 
