@@ -15,6 +15,10 @@ class WindowSelectionSchema(BaseModel):
     dual_chamber: bool = False
     laminated: bool = False
 
+class DoorSelectionSchema(BaseModel):
+    code: str = Field(..., description="Код двери из таблицы doors")
+    quantity: int = Field(1, ge=1, description="Количество дверей")
+
 class HouseSchema(BaseModel):
     length_m: float = Field(..., gt=0)
     width_m: float = Field(..., gt=0)
@@ -60,6 +64,7 @@ class CalculateRequestSchema(BaseModel):
     delivery: DeliverySchema
     addons: Optional[List[AddonSchema]] = Field([], description="Список выбранных дополнительных опций")
     windows: Optional[List[WindowSelectionSchema]] = Field([], description="Список выбранных окон и их конфигураций")
+    doors: Optional[List[DoorSelectionSchema]] = Field([], description="Список выбранных дверей")
     commission_rub: float = Field(0, description="Комиссия агента (КП). Добавляется в финале, как в примере на стр. 31 прайса.")
 
 # Schemas for Response Body of /calculate (200 OK)

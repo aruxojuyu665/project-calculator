@@ -8,7 +8,8 @@ from src.schemas import (
     KonstruktivSchema,
     ItogovayaStoimostSchema,
     DopolneniyaItem,
-    StandardWindowItem
+    StandardWindowItem,
+    DoorItem
 )
 from src import models
 
@@ -64,7 +65,7 @@ class PricingEngine:
         else:
             # Если окна не выбраны, стандартные остаются (уже включены в базовую цену)
             windows_cost_after_replacement = 0.0
-        doors_cost, doors_details = 0.0, []  # TODO: Реализовать расчет дверей
+        doors_cost, doors_details = self._calculate_doors_price(db, req)
         windows_doors_cost = windows_cost_after_replacement + doors_cost
 
         # --- 4. Доставка ---
@@ -344,6 +345,48 @@ class PricingEngine:
             ))
         
         return total_cost, windows_details
+
+    def _calculate_doors_price(self, db: Session, req: CalculateRequestSchema) -> tuple[float, list[DoorItem]]:
+        """
+        Расчет стоимости дверей.
+
+        Берет список выбранных дверей из запроса, находит их цены в БД
+        и рассчитывает общую стоимость.
+        """
+        total_cost = 0.0
+        doors_details = []
+
+        if not req.doors:
+            return total_cost, doors_details
+
+        # Получаем все коды дверей из запроса
+        door_codes = [door.code for door in req.doors]
+
+        # Загружаем информацию о дверях из БД одним запросом
+        db_doors = {door.code: door for door in db.query(models.Door).filter(models.Door.code.in_(door_codes)).all()}
+
+        # Рассчитываем стоимость для каждой выбранной двери
+        for door_req in req.doors:
+            db_door = db_doors.get(door_req.code)
+
+            if not db_door:
+                # Если дверь не найдена в БД, пропускаем её
+                continue
+
+            # Рассчитываем цену: Цена_За_Единицу * Количество
+            price_per_unit = float(db_door.price_rub)
+            total_price = price_per_unit * door_req.quantity
+            total_cost += total_price
+
+            # Добавляем детали в список для ответа
+            doors_details.append(DoorItem(
+                Наименование=db_door.title,
+                Колво=door_req.quantity,
+                Цена_шт_руб=round(price_per_unit, 2),
+                Сумма_руб=round(total_price, 2)
+            ))
+
+        return total_cost, doors_details
 
     def _handle_replacements(self, db: Session, req: CalculateRequestSchema, A_house: float) -> float:
         """

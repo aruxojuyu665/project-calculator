@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "imm0rtal | Калькулятор стоимости каркасного дома",
-    "version": "1.2.0",
-    "description": "POST /calculate принимает параметры из списка в конце файла «Габариты_.docx» и возвращает расчёт по структуре секций того же документа. Добавлено поле commission_rub (комиссия агента) по аудиту. **Добавлены поля addons и windows для выбора дополнительных опций и окон.**"
+    "version": "1.3.0",
+    "description": "POST /calculate принимает параметры из списка в конце файла «Габариты_.docx» и возвращает расчёт по структуре секций того же документа. Добавлено поле commission_rub (комиссия агента) по аудиту. **Добавлены поля addons, windows и doors для выбора дополнительных опций, окон и дверей.**"
   },
   "paths": {
     "/calculate": {
@@ -130,6 +130,18 @@
                         "quantity": {"type": "integer", "default": 1, "minimum": 1},
                         "dual_chamber": {"type": "boolean", "default": false},
                         "laminated": {"type": "boolean", "default": false}
+                      }
+                    }
+                  },
+                  "doors": {
+                    "type": "array",
+                    "description": "Список выбранных дверей",
+                    "items": {
+                      "type": "object",
+                      "required": ["code"],
+                      "properties": {
+                        "code": {"type": "string", "description": "Код двери из таблицы doors"},
+                        "quantity": {"type": "integer", "default": 1, "minimum": 1, "description": "Количество дверей"}
                       }
                     }
                   },

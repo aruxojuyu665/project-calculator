@@ -12,7 +12,7 @@ models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="imm0rtal | Калькулятор стоимости каркасного дома",
-    version="1.1.0"
+    version="1.3.0"
 )
 
 @app.post("/calculate", response_model=CalculateResponseSchema, summary="Рассчитать стоимость")
