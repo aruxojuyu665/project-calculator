@@ -24,7 +24,8 @@ SYNC_MAP: Dict[str, Type[Base]] = {
     "ridge_height_prices": models.RidgeHeightPrice,
     "roof_overhang_prices": models.RoofOverhangPrice,
     "partition_prices": models.PartitionPrice,
-    "std_inclusions": models.StdInclusion,
+    # std_inclusions требует дополнительной обработки для преобразования кодов в ID
+    # "std_inclusions": models.StdInclusion,  # Отключено, требует специальной обработки
     # base_price_m2 требует дополнительной обработки для преобразования кодов в ID
     # "base_price_m2": models.BasePriceM2,  # Пока отключено, требует доработки
 }
@@ -158,12 +159,61 @@ def transform_data(model: Type[Base], data: List[Dict[str, Any]]) -> List[Dict[s
         
     return transformed_data
 
+def resolve_foreign_keys(db: Session, data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Resolves foreign key codes to IDs for std_inclusions table.
+
+    Expected columns in Google Sheets:
+    - tech_code -> tech_id
+    - contour_code -> contour_id
+    - storey_type_code -> storey_type_id
+    """
+    # Build lookup dictionaries
+    tech_lookup = {t.code: t.id for t in db.query(models.BuildTechnology).all()}
+    contour_lookup = {c.code: c.id for c in db.query(models.Contour).all()}
+    storey_lookup = {s.code: s.id for s in db.query(models.StoreyType).all()}
+
+    resolved_data = []
+    for row in data:
+        new_row = row.copy()
+
+        # Resolve tech_code -> tech_id
+        if 'tech_code' in new_row:
+            tech_code = new_row.pop('tech_code')
+            if tech_code in tech_lookup:
+                new_row['tech_id'] = tech_lookup[tech_code]
+            else:
+                print(f"Warning: Unknown tech_code '{tech_code}', skipping row")
+                continue
+
+        # Resolve contour_code -> contour_id
+        if 'contour_code' in new_row:
+            contour_code = new_row.pop('contour_code')
+            if contour_code in contour_lookup:
+                new_row['contour_id'] = contour_lookup[contour_code]
+            else:
+                print(f"Warning: Unknown contour_code '{contour_code}', skipping row")
+                continue
+
+        # Resolve storey_type_code -> storey_type_id
+        if 'storey_type_code' in new_row:
+            storey_code = new_row.pop('storey_type_code')
+            if storey_code in storey_lookup:
+                new_row['storey_type_id'] = storey_lookup[storey_code]
+            else:
+                print(f"Warning: Unknown storey_type_code '{storey_code}', skipping row")
+                continue
+
+        resolved_data.append(new_row)
+
+    return resolved_data
+
 def sync_sheet_to_db(db: Session, model: Type[Base], sheet_name: str, gc: gspread.Client):
     """
     Performs the full sync process for a single sheet/model pair.
     """
     print(f"--- Starting sync for sheet '{sheet_name}' to table '{model.__tablename__}' ---")
-    
+
     # 1. Fetch data from Google Sheet
     raw_data = fetch_sheet_data(gc, sheet_name)
     if not raw_data:
@@ -172,18 +222,18 @@ def sync_sheet_to_db(db: Session, model: Type[Base], sheet_name: str, gc: gsprea
 
     # 2. Transform data
     transformed_data = transform_data(model, raw_data)
-    
+
     # 3. Truncate the table
     try:
         # Use TRUNCATE for a clean slate, which is often faster than DELETE
         # NOTE: Using 'CASCADE' might be necessary if there are foreign key constraints
         # but for simplicity, I'll use a simple DELETE first as requested.
         # db.execute(text(f"TRUNCATE TABLE {model.__tablename__} RESTART IDENTITY CASCADE;"))
-        
+
         # As requested: db.execute(Addons.__table__.delete())
         db.execute(model.__table__.delete())
         print(f"Truncated table: {model.__tablename__}")
-        
+
     except Exception as e:
         db.rollback()
         print(f"Error truncating table {model.__tablename__}: {e}")
@@ -195,7 +245,7 @@ def sync_sheet_to_db(db: Session, model: Type[Base], sheet_name: str, gc: gsprea
         db.bulk_insert_mappings(model, transformed_data)
         db.commit()
         print(f"Successfully inserted {len(transformed_data)} records into {model.__tablename__}")
-        
+
     except Exception as e:
         db.rollback()
         print(f"Error inserting data into table {model.__tablename__}: {e}")
@@ -203,23 +253,73 @@ def sync_sheet_to_db(db: Session, model: Type[Base], sheet_name: str, gc: gsprea
         print(f"First 5 rows of data that failed to insert: {transformed_data[:5]}")
         raise
 
+def sync_std_inclusions(db: Session, gc: gspread.Client):
+    """
+    Special sync function for std_inclusions table that handles foreign key resolution.
+    """
+    sheet_name = "std_inclusions"
+    model = models.StdInclusion
+
+    print(f"--- Starting sync for sheet '{sheet_name}' to table '{model.__tablename__}' (with FK resolution) ---")
+
+    # 1. Fetch data from Google Sheet
+    raw_data = fetch_sheet_data(gc, sheet_name)
+    if not raw_data:
+        print(f"Skipping sync for {sheet_name}: No data fetched.")
+        return
+
+    # 2. Transform data
+    transformed_data = transform_data(model, raw_data)
+
+    # 3. Resolve foreign keys (convert codes to IDs)
+    resolved_data = resolve_foreign_keys(db, transformed_data)
+
+    if not resolved_data:
+        print(f"Warning: No valid data to insert after FK resolution for {sheet_name}")
+        return
+
+    # 4. Truncate the table
+    try:
+        db.execute(model.__table__.delete())
+        print(f"Truncated table: {model.__tablename__}")
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error truncating table {model.__tablename__}: {e}")
+        raise
+
+    # 5. Insert new data
+    try:
+        db.bulk_insert_mappings(model, resolved_data)
+        db.commit()
+        print(f"Successfully inserted {len(resolved_data)} records into {model.__tablename__}")
+
+    except Exception as e:
+        db.rollback()
+        print(f"Error inserting data into table {model.__tablename__}: {e}")
+        print(f"First 5 rows of data that failed to insert: {resolved_data[:5]}")
+        raise
+
 def sync_google_sheets_to_db(db: Session):
     """
     Main function to synchronize all specified Google Sheets to the database.
     """
     print("Starting Google Sheets to DB synchronization...")
-    
+
     try:
         # 1. Authenticate gspread
         gc = get_gspread_client()
         print("gspread client authenticated successfully.")
-        
+
         # 2. Iterate through all sheets and sync
         for sheet_name, model in SYNC_MAP.items():
             sync_sheet_to_db(db, model, sheet_name, gc)
-            
+
+        # 3. Sync std_inclusions with special FK resolution
+        sync_std_inclusions(db, gc)
+
         print("Google Sheets to DB synchronization completed successfully.")
-        
+
     except FileNotFoundError as e:
         print(f"FATAL ERROR: {e}")
     except Exception as e:

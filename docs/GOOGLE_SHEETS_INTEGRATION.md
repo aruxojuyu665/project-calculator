@@ -18,7 +18,11 @@
 │   - window_modifiers                │
 │   - doors                           │
 │   - delivery_rules                  │
-│   - foundation_prices               │
+│   - std_inclusions                  │
+│   - ceiling_height_prices           │
+│   - ridge_height_prices             │
+│   - roof_overhang_prices            │
+│   - partition_prices                │
 └──────────────┬──────────────────────┘
                │
                │ Синхронизация
@@ -46,6 +50,11 @@
 │   - window_modifiers                │
 │   - doors                           │
 │   - delivery_rules                  │
+│   - std_inclusions                  │
+│   - ceiling_height_prices           │
+│   - ridge_height_prices             │
+│   - roof_overhang_prices            │
+│   - partition_prices                │
 └──────────────┬──────────────────────┘
                │
                │ Чтение данных
@@ -125,6 +134,21 @@
 - `rate_per_km` (Numeric) - стоимость за км после бесплатного пробега (по умолчанию 120)
 - `note` (Text) - примечание
 
+#### Лист `std_inclusions`
+Колонки:
+- `tech_code` (Text) - код технологии строительства (ссылка на build_technologies.code)
+- `contour_code` (Text) - код контура (ссылка на contours.code, например: 'warm')
+- `storey_type_code` (Text) - код типа этажности (ссылка на storey_types.code, например: 'one', 'mansard')
+- `included_window_width_cm` (Integer) - ширина включенного окна в см (по умолчанию 100)
+- `included_window_height_cm` (Integer) - высота включенного окна в см (по умолчанию 100)
+- `included_window_type` (Enum) - тип включенного окна: gluh, povorot, povorot_otkid (по умолчанию povorot_otkid)
+- `area_to_qty` (JSON) - JSON строка с зависимостью количества от площади, например: `[{"max_m2": 36, "qty": 2}, {"max_m2": 60, "qty": 3}]`
+- `included_entry_door_code` (Text) - код входной двери (опционально)
+- `included_interior_doors_qty` (Integer) - количество межкомнатных дверей (опционально)
+- `note` (Text) - примечание (опционально)
+
+**Важно:** Коды `tech_code`, `contour_code`, `storey_type_code` автоматически преобразуются в соответствующие ID при синхронизации.
+
 ## Использование
 
 ### Синхронизация данных
@@ -189,7 +213,18 @@ curl -X POST http://localhost:8000/admin/sync-prices
 
 ### Foreign Keys
 
-Таблица `base_price_m2` требует преобразования кодов в ID для внешних ключей:
+Некоторые таблицы требуют преобразования кодов в ID для внешних ключей:
+
+#### Таблица `std_inclusions`
+Коды автоматически преобразуются в ID при синхронизации:
+- `tech_code` → `tech_id` - ID технологии строительства
+- `contour_code` → `contour_id` - ID контура
+- `storey_type_code` → `storey_type_id` - ID типа этажности
+
+Синхронизация `std_inclusions` полностью реализована и работает.
+
+#### Таблица `base_price_m2`
+Требует преобразования кодов в ID для внешних ключей:
 - `tech_id` - ID технологии строительства
 - `contour_id` - ID контура
 - `brand_id` - ID бренда утеплителя
